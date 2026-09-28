@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   downloadSalesReport,
@@ -9,6 +10,7 @@ import {
   InvestigationResult,
 } from "@/lib/api";
 import { Badge } from "@/components/Badge";
+import Navbar from "@/components/Navbar";
 import { EvidenceGraph } from "@/components/EvidenceGraph";
 import { TaskGraph } from "@/components/TaskGraph";
 
@@ -32,6 +34,14 @@ function reportContext(result: InvestigationResult): string {
 }
 
 export default function LabPage() {
+  const router=useRouter();
+  useEffect(() => {
+    const token = sessionStorage.getItem("access_token");
+
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [router]);
   const [question, setQuestion] = useState(
     "Why did revenue decrease, and what should the company do?"
   );
@@ -128,6 +138,7 @@ export default function LabPage() {
 
   return (
     <div className="min-h-screen">
+      <Navbar/>
       <header className="border-b border-lab-border px-8 py-5 flex items-center justify-between">
         <div>
           <h1 className="font-display text-lg">AI Research Lab</h1>

@@ -33,7 +33,10 @@ def _hash_password(password: str) -> str:
 def _verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "database", "lab.db")
+DB_PATH = os.environ.get(
+    "USER_DB_PATH",
+    os.path.join(os.path.dirname(__file__), "..", "database", "lab.db"),
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (

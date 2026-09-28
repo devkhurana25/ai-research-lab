@@ -1,4 +1,6 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
+
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export interface Hypothesis {
   id: string;
@@ -42,6 +44,89 @@ export interface ChatReply {
   history: { role: "user" | "assistant"; content: string }[];
 }
 
+export function getAuthHeaders(): HeadersInit {
+  const token = sessionStorage.getItem("access_token");
+
+  if (!token) {
+    throw new Error("Not authenticated");
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+export async function registerUser(
+  email: string,
+  password: string
+): Promise<string> {
+  const res = await fetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Registration failed");
+  }
+
+  const data = await res.json();
+
+  return data.access_token;
+}
+
+export async function loginUser(
+  email: string,
+  password: string
+): Promise<string> {
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Login failed");
+  }
+
+  const data = await res.json();
+
+  return data.access_token;
+}
+
+export async function getCurrentUser() {
+  const token = sessionStorage.getItem("access_token");
+
+  if (!token) {
+    throw new Error("Not authenticated");
+  }
+
+  const res = await fetch(`${API_URL}/auth/me`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error("Authentication failed");
+  }
+
+  return res.json();
+}
+
 export async function sendReportChat(
   prompt: string,
   conversationId: string | null,
@@ -49,7 +134,7 @@ export async function sendReportChat(
 ): Promise<ChatReply> {
   const res = await fetch(`${API_URL}/chatbot`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json",...getAuthHeaders(),},
     body: JSON.stringify({
       prompt,
       conversation_id: conversationId,
@@ -72,7 +157,7 @@ export async function sendReportChat(
 export async function downloadSalesReport(datasetPath: string, reportContext: string): Promise<Blob> {
   const res = await fetch(`${API_URL}/generate-report`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json",...getAuthHeaders(), },
     body: JSON.stringify({ dataset_path: datasetPath, report_context: reportContext }),
   });
   if (!res.ok) {
@@ -140,7 +225,7 @@ export interface DatasetProfile {
 }
 
 export async function getDatasetProfile(path: string): Promise<DatasetProfile> {
-  const res = await fetch(`${API_URL}/datasets/profile?path=${encodeURIComponent(path)}`);
+  const res = await fetch(`${API_URL}/datasets/profile?path=${encodeURIComponent(path)}`,{headers: {...getAuthHeaders(),},});
   if (!res.ok) throw new Error(`Failed to profile dataset: ${res.status}`);
   return res.json();
 }
@@ -155,7 +240,7 @@ export interface AdminStats {
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
-  const res = await fetch(`${API_URL}/admin/stats`);
+  const res = await fetch(`${API_URL}/admin/stats`,{headers: {...getAuthHeaders(),},});
   if (!res.ok) throw new Error("Failed to load admin stats");
   return res.json();
 }
@@ -166,6 +251,12 @@ export interface StreamCallbacks {
   onError: (err: string) => void;
 }
 
+
+
+export function logoutUser() {
+  sessionStorage.removeItem("access_token");
+}
+
 /** Live investigation run via SSE (spec section 19 -- "live investigation activity"). */
 export function streamInvestigation(
   question: string,
@@ -173,26 +264,69 @@ export function streamInvestigation(
   documentPaths: string[],
   callbacks: StreamCallbacks
 ): () => void {
+  const token = sessionStorage.getItem("access_token");
+
+  if (!token) {
+    callbacks.onError("You must be logged in.");
+    return () => {};
+  }
+
   const params = new URLSearchParams({
     question,
     dataset_paths: datasetPaths.join(","),
     document_paths: documentPaths.join(","),
   });
-  const source = new EventSource(`${API_URL}/investigations/stream?${params.toString()}`);
 
-  source.addEventListener("log", (e) => callbacks.onLog((e as MessageEvent).data));
-  source.addEventListener("result", (e) => {
-    callbacks.onResult(JSON.parse((e as MessageEvent).data));
-    source.close();
-  });
-  source.addEventListener("failure", (e) => {
-    callbacks.onError((e as MessageEvent).data || "Investigation failed on the server");
-    source.close();
-  });
-  source.onerror = () => {
-    callbacks.onError("Connection to the API was interrupted before the investigation completed");
-    source.close();
-  };
+  const controller = new AbortController();
 
-  return () => source.close();
+  fetchEventSource(
+    `${API_URL}/investigations/stream?${params.toString()}`,
+    {
+      method: "GET",
+
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+
+      signal: controller.signal,
+
+      onmessage(event) {
+        if (event.event === "log") {
+          callbacks.onLog(event.data);
+        }
+
+        else if (event.event === "result") {
+          callbacks.onResult(JSON.parse(event.data));
+          controller.abort();
+        }
+
+        else if (event.event === "failure") {
+          callbacks.onError(
+            event.data || "Investigation failed on the server"
+          );
+          controller.abort();
+        }
+      },
+
+      onerror(error) {
+        callbacks.onError(
+          "Connection to the API was interrupted before the investigation completed"
+        );
+
+        controller.abort();
+
+        throw error;
+      },
+    }
+  ).catch((error) => {
+    // AbortController cancellation is expected when
+    // the investigation finishes.
+    if (error?.name !== "AbortError") {
+      callbacks.onError(
+        error?.message || "Investigation stream failed"
+      );
+    }
+  });
+
+  return () => controller.abort();
 }

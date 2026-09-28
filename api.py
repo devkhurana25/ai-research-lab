@@ -130,7 +130,7 @@ class GenerateReportRequest(BaseModel):
     report_context: str | None = Field(default=None, max_length=12000)
 
 @app.post("/ollama-query")
-def ollama_query_endpoint(request: PromptRequest):
+def ollama_query_endpoint(request: PromptRequest,current_user: dict = Depends(user_auth.get_current_user),):
     try:
         answer = ollama_query(request.prompt)
     except RuntimeError as exc:
@@ -139,7 +139,7 @@ def ollama_query_endpoint(request: PromptRequest):
 
 
 @app.post("/chatbot")
-def chatbot_endpoint(request: ChatRequest):
+def chatbot_endpoint(request: ChatRequest,current_user: dict = Depends(user_auth.get_current_user),):
     prompt = request.prompt.strip()
     if not prompt:
         raise HTTPException(422, "prompt must not be empty")
@@ -200,7 +200,7 @@ def chatbot_endpoint(request: ChatRequest):
 
 
 @app.post("/generate-report")
-def generate_report_endpoint(request: GenerateReportRequest):
+def generate_report_endpoint(request: GenerateReportRequest,current_user: dict = Depends(user_auth.get_current_user),):
     try:
         dataframe, source_name = load_report_dataframe(
             dataset_path=request.dataset_path,
@@ -247,7 +247,7 @@ class InvestigationRequest(BaseModel):
 @app.post("/investigations")
 def create_investigation(
     req: InvestigationRequest,
-    current_user: dict | None = Depends(current_user_or_open),
+    current_user: dict = Depends(user_auth.get_current_user),
     x_api_key: str | None = Header(default=None),
 ):
     if req.python_code:
@@ -277,7 +277,7 @@ async def stream_investigation(
     question: str,
     dataset_paths: str,       # comma-separated -- EventSource only supports GET
     document_paths: str = "",
-    current_user: dict | None = Depends(current_user_or_open),
+    current_user: dict = Depends(user_auth.get_current_user),
 ):
     """Server-Sent Events: streams each agent's log line the moment it happens,
     then a final 'result' event with the full investigation payload."""
@@ -339,13 +339,13 @@ async def stream_investigation(
 
 
 @app.get("/investigations")
-def list_investigations(current_user: dict | None = Depends(current_user_or_open)):
-    return db.list_all(user_id=current_user["id"] if current_user else None)
+def list_investigations(current_user: dict = Depends(user_auth.get_current_user),):
+    return db.list_all(user_id=current_user["id"])
 
 
 @app.get("/investigations/{investigation_id}/report")
-def get_report(investigation_id: str, current_user: dict | None = Depends(current_user_or_open)):
-    user_id = current_user["id"] if current_user else None
+def get_report(investigation_id: str, current_user: dict = Depends(user_auth.get_current_user),):
+    user_id = current_user["id"] 
     row = db.get(investigation_id, user_id=user_id)  # enforces ownership; None if not found OR not owned
     if not row:
         raise HTTPException(404, "investigation not found")
@@ -356,8 +356,8 @@ def get_report(investigation_id: str, current_user: dict | None = Depends(curren
 
 
 @app.get("/investigations/{investigation_id}/report.pdf")
-def get_report_pdf(investigation_id: str, current_user: dict | None = Depends(current_user_or_open)):
-    user_id = current_user["id"] if current_user else None
+def get_report_pdf(investigation_id: str, current_user: dict = Depends(user_auth.get_current_user),):
+    user_id = current_user["id"] 
     row = db.get(investigation_id, user_id=user_id)  # enforces ownership
     if not row:
         raise HTTPException(404, "investigation not found")
@@ -379,7 +379,7 @@ def get_report_pdf(investigation_id: str, current_user: dict | None = Depends(cu
 # -------------------------------------------------------- dataset explorer -
 
 @app.get("/datasets/profile")
-def get_dataset_profile(path: str):
+def get_dataset_profile(path: str,current_user: dict = Depends(user_auth.get_current_user),):
     try:
         return dataset_tools.profile(path)
     except FileNotFoundError:
@@ -394,7 +394,7 @@ def health():
 
 
 @app.get("/admin/stats")
-def admin_stats():
+def admin_stats(current_user: dict = Depends(user_auth.get_current_user),):
     """Aggregate observability stats across all investigations (spec section 25).
     Not user-scoped by design -- this is an admin/operator view. In a real
     deployment this endpoint should sit behind an admin role, not just any
