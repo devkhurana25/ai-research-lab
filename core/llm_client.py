@@ -25,8 +25,8 @@ def _ollama_complete(messages: list[dict[str, str]]) -> str:
     try:
         response = requests.post(
             f"{base_url}/v1/chat/completions",
-            json={"model": "mistral", "messages": messages},
-            timeout=(5, 120),
+            json={"model": "llama3", "messages": messages},
+            timeout=(10, 600),
         )
     except requests.RequestException as exc:
         raise RuntimeError(f"Could not reach Ollama at {base_url}: {exc}") from exc
