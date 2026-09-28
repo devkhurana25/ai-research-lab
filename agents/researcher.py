@@ -2,7 +2,7 @@
 Research Agent (spec section 6D).
 
 Two evidence sources, both optional:
-  1. Locally supplied documents (TF-IDF retrieval) -- tried first.
+    1. Locally supplied documents (TF-IDF or pgvector retrieval) -- tried first.
   2. Live web search -- only attempted when local documents didn't already
      answer the question, per spec: "do not perform unnecessary web
      searches for questions answerable entirely from uploaded data."
@@ -13,7 +13,7 @@ the project's "never fabricate evidence" rule.
 """
 from __future__ import annotations
 from core.state import InvestigationState, Evidence
-from tools.retrieval import DocumentIndex
+from tools.retrieval import retrieve_documents
 from tools import web_search
 
 MIN_LOCAL_RESULTS_TO_SKIP_WEB_SEARCH = 1
@@ -23,11 +23,8 @@ def run(state: InvestigationState, document_paths: list[str]) -> None:
     local_results_found = 0
 
     if document_paths:
-        index = DocumentIndex()
-        n_chunks = index.index_documents(document_paths)
-        state.emit("ResearchAgent", f"Indexed {n_chunks} chunks from {len(document_paths)} document(s)")
-
-        results = index.query(state.question, top_k=3)
+        results = retrieve_documents(state.question, document_paths, top_k=3)
+        state.emit("ResearchAgent", f"Retrieved {len(results)} passage(s) from {len(document_paths)} document(s)")
         for r in results:
             state.add_evidence(Evidence(
                 kind="external_source",

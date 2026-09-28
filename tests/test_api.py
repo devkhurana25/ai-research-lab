@@ -105,6 +105,39 @@ def test_dataset_explorer_missing_file(client):
     assert r.status_code == 404
 
 
+def test_python_analysis_requires_api_key_and_returns_execution_log(client, monkeypatch):
+    payload = {
+        "question": "Check the sales data",
+        "dataset_paths": ["sample_data/sales.csv"],
+        "python_code": "print('API tool ran')",
+    }
+    assert client.post("/investigations", json=payload).status_code == 403
+
+    token = _register(client, "python-tool@example.com")
+    assert client.post(
+        "/investigations",
+        headers={"Authorization": f"Bearer {token}"},
+        json=payload,
+    ).status_code == 403
+
+    import core.auth
+    api_key = "test-python-execution-key"
+    monkeypatch.setenv("API_KEY", api_key)
+    monkeypatch.setattr(core.auth, "API_KEY", api_key)
+    response = client.post("/investigations", headers={"X-API-Key": api_key}, json=payload)
+
+    assert response.status_code == 200, response.text
+    tool_log = response.json()["tool_log"]
+    assert len(tool_log) == 1
+    assert tool_log[0]["tool"] == "python_executor"
+    assert tool_log[0]["status"] == "ok"
+    assert "API tool ran" in tool_log[0]["stdout"]
+    import api
+    user_id = api.user_auth.decode_token(token)["sub"]
+    persisted = api.db.get(response.json()["id"], user_id=user_id)
+    assert persisted["detail"]["tool_log"][0]["stdout"] == "API tool ran\n"
+
+
 def test_investigation_stream_emits_worker_failure(client, monkeypatch):
     import api
 
@@ -215,10 +248,10 @@ def test_generate_report_returns_pdf_with_stats_segments_and_ai_findings(client,
     text = " ".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
     assert "Dataset Summary" in text
     assert "mean" in text and "median" in text and "min" in text and "max" in text
-    assert "Customer Segmentation and Cohorts" in text
+    assert "Cohort: Region" in text
     assert "region" in text
     assert "Hypotheses" in text and "Critique" in text and "Proposed Actions" in text
-    assert "Scatter plot" in text
+    assert "Relationship Analysis" in text
     assert "Investigation found a supported regional revenue difference." in prompts[0]
     assert len(PdfReader(BytesIO(response.content)).pages) >= 6
 

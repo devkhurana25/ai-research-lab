@@ -17,7 +17,7 @@ including real bugs found and fixed by testing rather than assumed away.
 |---|---|---|
 | Orchestrator (LangGraph) | ✅ real `StateGraph`, conditional revise/proceed edge, `recursion_limit` backstop, per-agent timing instrumentation | forced the critic to always object — confirmed it loops exactly `max_revision_cycles` times then still completes |
 | Data Scientist / Statistical Analyst / Hypothesis / Experiment / ML Experiment / Critic / Report agents | ✅ all real computations (scipy, scikit-learn), never fabricated | `tests/test_pipeline.py` |
-| Research Agent — local RAG | ✅ TF-IDF (`tools/retrieval.py`) and pgvector-backed (`database/postgres_db.py` + `tools/embeddings.py`) retrieval | pgvector path tested live: index created, chunks inserted, cosine query returned the correct nearest chunk |
+| Research Agent — local RAG | ✅ selectable TF-IDF or pgvector retrieval (`RETRIEVAL_BACKEND=auto|tfidf|pgvector`) | TF-IDF is covered against the sample PDF; pgvector dispatch, embedding, and result mapping are unit-tested; live Postgres checks require a running pgvector database |
 | **Research Agent — web search** | ✅ real `ddgs`-based implementation (`tools/web_search.py`), tried only when local documents don't already answer the question | code path exercised and confirmed to degrade to an empty list rather than crash, since this build's sandbox network policy can't reach live search engines — **not verified against real search results**; run `python -c "from tools.web_search import search; print(search('test'))"` in an unrestricted environment to confirm |
 | Persistence | ✅ SQLite (`database/db.py`) and real PostgreSQL 16 + pgvector 0.6.0 (`database/postgres_db.py`) | tested live: schema creation, insert, fetch, list |
 | Multi-user auth | ✅ bcrypt + JWT, per-user data isolation | `tests/test_api.py` — including a real bug found and fixed, see below |
@@ -29,7 +29,8 @@ including real bugs found and fixed by testing rather than assumed away.
 | **Observability / admin view** | ✅ `GET /admin/stats` aggregates real per-agent timing, status breakdown, revision-cycle usage, and critic-finding rate across all stored investigations; `/admin` page visualizes it | `test_admin_stats_aggregates_real_data`: creates 2 real investigations, confirms the aggregate reflects them exactly (not hardcoded) |
 | **Visual design** | ✅ deliberate identity, not framework defaults — deep blue-charcoal palette, single brass accent, serif headlines (`Source Serif 4`) + monospace data display (`JetBrains Mono`), both self-hosted via `@fontsource` (no external font CDN calls), sharp instrument-style radii instead of rounded SaaS cards | `npm run build` succeeds; compiled CSS inspected directly to confirm the custom palette and both fonts are actually present, not just declared |
 | Evaluation harness | ✅ `evaluations/benchmark.py`, 2 cases against the real pipeline | both pass |
-| Tests | ✅ **15 passing** across two files | `pytest tests/ -v` |
+| Python execution | ✅ optional LangGraph tool node, isolated subprocess, timeout, and logged result; API access requires a configured shared API key | `tests/test_pipeline.py` and `tests/test_api.py` |
+| Tests | `pytest tests/ -v` | Backend integration tests use SQLite; live Postgres checks require a configured database |
 
 ## Bugs found and fixed during this build
 
@@ -54,8 +55,8 @@ including real bugs found and fixed by testing rather than assumed away.
 
 ```bash
 pip install -r requirements.txt
-python run_demo.py              # CLI run, writes reports_out.md
-pytest tests/ -v                 # 15 tests
+python run_demo.py              # LangGraph CLI run, writes reports_out.md
+pytest tests/ -v
 python evaluations/benchmark.py
 uvicorn api:app --reload         # http://127.0.0.1:8000
 
@@ -65,6 +66,11 @@ cd web && npm install && npm run dev   # http://localhost:3000 -- /, /lab, /expl
 Auth, PDF export, live streaming, Postgres, and Docker instructions are
 unchanged from before — see inline comments in `api.py`, `.env.example`,
 and `docker-compose.yml`.
+
+Set `RETRIEVAL_BACKEND=auto` to use pgvector when `DATABASE_URL` selects
+Postgres and TF-IDF with the SQLite fallback. Set `tfidf` or `pgvector` to
+force a backend. The `/investigations` request can optionally include
+`python_code`; this requires a configured `API_KEY` and an `X-API-Key` header.
 
 ## Deploy for free
 
@@ -101,8 +107,10 @@ Steps:
    Without these secrets, the workflow still runs tests on every push;
    it just skips the deploy step and says so in the log.
 
-The project uses local Ollama Mistral as its only LLM provider. Install Ollama
-and run `ollama pull mistral`. Start the Ollama service, then run the API
+The project uses local Ollama llama3 as its only LLM provider. Install Ollama
+and run `ollama pull llama3`. Start the Ollama service, then run the API
+The project uses local Ollama llama3 as its only LLM provider. Install Ollama
+and run `ollama pull llama3`. Start the Ollama service, then run the API
 locally; it connects to `http://localhost:11434` by default.
 `POST /ollama-query` accepts
 `{"prompt": "Why did revenue decrease?"}`. `POST /chatbot` accepts a prompt

@@ -8,7 +8,6 @@ pydantic
 pytest
 langgraph
 sqlalchemy
-asyncpg
 psycopg2-binary
 pgvector
 # optional: enables real embeddings in tools/embeddings.py instead of the hash fallback.

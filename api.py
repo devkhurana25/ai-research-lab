@@ -241,11 +241,22 @@ class InvestigationRequest(BaseModel):
     question: str
     dataset_paths: list[str]
     document_paths: list[str] = []
+    python_code: str | None = Field(default=None, max_length=20000)
 
 
 @app.post("/investigations")
-def create_investigation(req: InvestigationRequest, current_user: dict | None = Depends(current_user_or_open)):
-    state = run_investigation(req.question, req.dataset_paths, req.document_paths)
+def create_investigation(
+    req: InvestigationRequest,
+    current_user: dict | None = Depends(current_user_or_open),
+    x_api_key: str | None = Header(default=None),
+):
+    if req.python_code:
+        if not os.environ.get("API_KEY"):
+            raise HTTPException(403, "Python analysis requires a configured API_KEY")
+        require_api_key(x_api_key)
+    state = run_investigation(
+        req.question, req.dataset_paths, req.document_paths, python_code=req.python_code
+    )
     _investigations[state.id] = state
     db.save(state, user_id=current_user["id"] if current_user else None)
     return {
@@ -256,6 +267,7 @@ def create_investigation(req: InvestigationRequest, current_user: dict | None = 
         "hypotheses": [h.__dict__ for h in state.hypotheses],
         "evidence": [e.__dict__ for e in state.evidence],
         "critic_findings": [f.__dict__ for f in state.critic_findings],
+        "tool_log": [tool.__dict__ for tool in state.tool_log],
         "report_markdown": state.report_markdown,
     }
 
@@ -316,6 +328,7 @@ async def stream_investigation(
                         "hypotheses": [h.__dict__ for h in state.hypotheses],
                         "evidence": [e.__dict__ for e in state.evidence],
                         "critic_findings": [f.__dict__ for f in state.critic_findings],
+                        "tool_log": [tool.__dict__ for tool in state.tool_log],
                         "report_markdown": state.report_markdown,
                     }),
                 }

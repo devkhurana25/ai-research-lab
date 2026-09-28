@@ -1,4 +1,4 @@
-"""Local Ollama Mistral client used by the API and report generation."""
+"""Local Ollama llama3 client used by the API and report generation."""
 from __future__ import annotations
 
 import os
@@ -14,7 +14,7 @@ def ollama_query(prompt: str) -> str:
 
 
 def ollama_chat(messages: list[dict[str, str]]) -> str:
-    """Send an existing conversation to local Ollama Mistral."""
+    """Send an existing conversation to local Ollama llama3."""
     return _ollama_complete(messages)
 
 

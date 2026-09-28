@@ -1,12 +1,9 @@
 """
 Persistence layer (spec section 10).
 
-Uses SQLite rather than PostgreSQL+pgvector because no database server is
-reachable from this build environment. The schema and access pattern are
-deliberately kept swap-compatible: replacing `sqlite3` calls here with
-`asyncpg`/SQLAlchemy against Postgres is a drop-in change, not a redesign.
-Vector search (RAG) is handled separately in tools/retrieval.py with an
-in-memory TF-IDF index, standing in for pgvector.
+SQLite fallback for investigation persistence when DATABASE_URL is unset.
+Document retrieval is independently selected between TF-IDF and pgvector
+in tools/retrieval.py.
 
 Investigations are scoped to `user_id` (nullable — anonymous/no-auth usage
 still works) once core/users.py issues real user accounts.
@@ -58,6 +55,7 @@ def save(state: InvestigationState, user_id: str | None = None) -> None:
                     "hypotheses": [h.__dict__ for h in state.hypotheses],
                     "evidence": [e.__dict__ for e in state.evidence],
                     "critic_findings": [f.__dict__ for f in state.critic_findings],
+                    "tool_log": [tool.__dict__ for tool in state.tool_log],
                     "log": state.log,
                     "agent_timings_s": state.agent_timings_s,
                     "total_runtime_s": state.total_runtime_s,

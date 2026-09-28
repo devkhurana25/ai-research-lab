@@ -4,7 +4,7 @@ write the report to disk.
 
 Usage: python run_demo.py
 """
-from core.orchestrator import run_investigation
+from core.orchestrator_langgraph import run_investigation
 
 if __name__ == "__main__":
     state = run_investigation(

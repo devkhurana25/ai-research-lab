@@ -277,7 +277,7 @@ export default function LabPage() {
                 <div>
                   <h2 className="font-display text-base">Discuss this report</h2>
                   <p className="text-xs text-lab-text-faint font-data mt-1">
-                    Ollama Mistral · report, hypotheses, and critique stay in context
+                    Ollama llama3 · report, hypotheses, and critique stay in context
                   </p>
                 </div>
                 <span className="lab-tag text-lab-support border-lab-support-dim">LOCAL MODEL</span>
@@ -316,12 +316,12 @@ export default function LabPage() {
                     className={`border-l-2 pl-3 py-1 ${message.role === "assistant" ? "border-lab-support" : "border-lab-accent-dim"}`}
                   >
                     <p className="text-[10px] font-data uppercase text-lab-text-faint mb-1">
-                      {message.role === "assistant" ? "ollama mistral" : "you"}
+                      {message.role === "assistant" ? "ollama llama3" : "you"}
                     </p>
                     <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                   </div>
                 ))}
-                {chatSending && <p className="text-xs font-data text-lab-text-faint">Mistral is reading the report…</p>}
+                {chatSending && <p className="text-xs font-data text-lab-text-faint">llama3 is reading the report…</p>}
               </div>
 
               {chatError && <p className="text-lab-danger text-xs font-data">{chatError}</p>}
@@ -336,7 +336,7 @@ export default function LabPage() {
                   value={chatPrompt}
                   onChange={(event) => setChatPrompt(event.target.value)}
                   placeholder="Ask a follow-up about this report…"
-                  aria-label="Ask Ollama Mistral about this report"
+                  aria-label="Ask Ollama llama3 about this report"
                   className="min-w-0 flex-1 bg-lab-panel border border-lab-border-strong rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-lab-accent"
                 />
                 <button
@@ -344,7 +344,7 @@ export default function LabPage() {
                   disabled={chatSending || !chatPrompt.trim()}
                   className="bg-lab-accent disabled:opacity-40 text-lab-bg font-medium px-4 py-2 rounded-sm hover:brightness-110"
                 >
-                  {chatSending ? "thinking…" : "ask Mistral"}
+                  {chatSending ? "thinking…" : "ask llama3"}
                 </button>
               </form>
             </section>

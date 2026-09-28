@@ -50,10 +50,10 @@ def run_benchmark() -> bool:
                 ok = check(state)
             except Exception as e:
                 ok = False
-                print(f"  ✗ {name} (raised {e})")
+                print(f"  FAIL {name} (raised {e})")
                 all_passed = False
                 continue
-            print(f"  {'✓' if ok else '✗'} {name}")
+            print(f"  {'PASS' if ok else 'FAIL'} {name}")
             all_passed = all_passed and ok
     return all_passed
 

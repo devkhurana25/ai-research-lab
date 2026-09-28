@@ -1,10 +1,8 @@
 """
 PostgreSQL + pgvector persistence layer (spec section 9, 10).
 
-This is the real thing, not a stand-in: tested in this build against a
-live local Postgres 16 + pgvector 0.6.0 instance. It replaces
-database/db.py (SQLite) and the TF-IDF index in tools/retrieval.py's
-in-memory matrix with a proper vector column and ANN-friendly index.
+Persists investigations and indexed document chunks in PostgreSQL. The
+separate TF-IDF retrieval path remains available through tools/retrieval.py.
 
 Connection is configured via env vars (see .env.example):
   DATABASE_URL=postgresql://user:pass@host:5432/dbname
@@ -13,11 +11,16 @@ from __future__ import annotations
 import os
 import json
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy import Column, String, Text, Integer, DateTime, func
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:labpass@localhost:5432/ai_research_lab")
+DATABASE_URL = make_url(os.environ.get(
+    "DATABASE_URL", "postgresql://postgres:labpass@localhost:5432/ai_research_lab"
+))
+if DATABASE_URL.drivername == "postgresql":
+    DATABASE_URL = DATABASE_URL.set(drivername="postgresql+psycopg2")
 EMBEDDING_DIM = 384  # matches all-MiniLM-L6-v2; adjust if you swap embedding models
 
 Base = declarative_base()
@@ -38,7 +41,7 @@ class Investigation(Base):
 
 
 class DocumentChunk(Base):
-    """Vector-indexed document chunks, replacing the in-memory TF-IDF matrix."""
+    """Vector-indexed document chunks for the pgvector retrieval backend."""
     __tablename__ = "document_chunks"
     id = Column(Integer, primary_key=True, autoincrement=True)
     source = Column(String, nullable=False)
@@ -47,6 +50,8 @@ class DocumentChunk(Base):
 
 
 def init_db() -> None:
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(engine)
     # ANN index for cosine similarity search — ivfflat needs data present to build well,
     # but creating it empty is safe and postgres will use it once populated.
@@ -65,6 +70,7 @@ def save_investigation(state, user_id: str | None = None) -> None:
             "hypotheses": [h.__dict__ for h in state.hypotheses],
             "evidence": [e.__dict__ for e in state.evidence],
             "critic_findings": [f.__dict__ for f in state.critic_findings],
+            "tool_log": [tool.__dict__ for tool in state.tool_log],
             "log": state.log,
             "agent_timings_s": state.agent_timings_s,
             "total_runtime_s": state.total_runtime_s,
@@ -137,8 +143,14 @@ def list_investigations(user_id: str | None = None) -> list[dict]:
 
 
 def index_chunks(chunks: list[str], sources: list[str], embeddings: list[list[float]]) -> None:
+    if not (len(chunks) == len(sources) == len(embeddings)):
+        raise ValueError("chunks, sources, and embeddings must have matching lengths")
     session: Session = SessionLocal()
     try:
+        if sources:
+            session.query(DocumentChunk).filter(DocumentChunk.source.in_(set(sources))).delete(
+                synchronize_session=False
+            )
         for text_, source, emb in zip(chunks, sources, embeddings):
             session.add(DocumentChunk(source=source, text=text_, embedding=emb))
         session.commit()
@@ -149,12 +161,16 @@ def index_chunks(chunks: list[str], sources: list[str], embeddings: list[list[fl
 def query_similar(query_embedding: list[float], top_k: int = 3) -> list[dict]:
     session: Session = SessionLocal()
     try:
+        distance = DocumentChunk.embedding.cosine_distance(query_embedding).label("distance")
         rows = (
-            session.query(DocumentChunk)
-            .order_by(DocumentChunk.embedding.cosine_distance(query_embedding))
+            session.query(DocumentChunk, distance)
+            .order_by(distance)
             .limit(top_k)
             .all()
         )
-        return [{"text": r.text, "source": r.source} for r in rows]
+        return [
+            {"text": row.text, "source": row.source, "score": 1 - float(distance)}
+            for row, distance in rows
+        ]
     finally:
         session.close()

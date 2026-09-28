@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 import uuid
 
 
@@ -66,6 +66,7 @@ class ToolExecution:
     id: str = field(default_factory=_id)
     tool: str = ""
     args: dict = field(default_factory=dict)
+    code: str = ""
     stdout: str = ""
     stderr: str = ""
     status: str = "ok"       # ok | error | timeout

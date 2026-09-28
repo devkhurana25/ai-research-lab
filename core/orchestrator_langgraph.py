@@ -1,16 +1,10 @@
 """
 LangGraph orchestrator (spec section 5, 6A).
 
-This replaces the plain-Python while-loop in core/orchestrator.py with an
-actual LangGraph StateGraph: explicit nodes, a conditional edge for the
-critic's revise-or-proceed decision, and a recursion limit as the bounded-
-autonomy backstop. Both orchestrators produce the same InvestigationState
-shape, so callers (api.py, run_demo.py) can import either one.
-
-Why this file exists alongside core/orchestrator.py rather than replacing
-it: the plain version is easier to read/debug and has no extra dependency;
-this version is what the spec explicitly asks for (section 5) and shows
-the same logic expressed as a graph. Use this one going forward.
+The investigation runs as an actual LangGraph StateGraph: explicit nodes, a
+conditional revise-or-proceed edge, and a recursion limit as the bounded-
+autonomy backstop. An optional Python analysis runs through an isolated tool
+node before hypothesis generation.
 
 Each phase's wall-clock time is recorded into state.agent_timings_s (spec
 section 25, observability) so /admin/stats can report real per-agent
@@ -18,15 +12,18 @@ timing aggregated across investigations, not estimates.
 """
 from __future__ import annotations
 import time
+from pathlib import Path
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
-from core.state import InvestigationState, InvestigationStatus
+from core.state import InvestigationState, InvestigationStatus, ToolExecution
 from agents import data_scientist, researcher, hypothesis, experiment, ml_experiment, critic, report
+from tools.python_executor import run_python
 
 
 class GraphState(TypedDict):
     state: InvestigationState
     document_paths: list[str]
+    python_code: str | None
 
 
 def _timed(state: InvestigationState, agent_name: str, fn) -> None:
@@ -46,6 +43,8 @@ def _plan_node(gs: GraphState) -> GraphState:
         "Generate hypotheses from observed patterns", "Run statistical experiments per hypothesis",
         "Critic review", "Synthesize report",
     ]
+    if gs.get("python_code"):
+        s.plan.insert(2, "Run optional Python analysis")
     s.emit("Director", f"Plan: {s.plan}")
     return gs
 
@@ -63,6 +62,50 @@ def _research_node(gs: GraphState) -> GraphState:
     s.status = InvestigationStatus.RESEARCH
     s.emit("Director", "Entering phase: RESEARCH")
     _timed(s, "ResearchAgent", lambda: researcher.run(s, gs["document_paths"]))
+    return gs
+
+
+def _python_tool_node(gs: GraphState) -> GraphState:
+    state = gs["state"]
+    code = gs.get("python_code")
+    if not code:
+        return gs
+
+    timeout_s = state.budgets["python_execution_timeout_s"]
+    input_files = {
+        f"dataset_{index}{Path(path).suffix}": path
+        for index, path in enumerate(state.datasets)
+        if Path(path).is_file()
+    }
+    state.status = InvestigationStatus.EXPERIMENTATION
+    state.emit("PythonExecutor", "Running optional analysis in an isolated workspace")
+
+    if state.counters["python_executions"] >= state.budgets["max_python_executions"]:
+        status = "error"
+        stdout = ""
+        stderr = "Python execution budget exhausted"
+        runtime_s = 0.0
+        artifacts: list[str] = []
+    else:
+        result = run_python(code, timeout_s=timeout_s, input_files=input_files)
+        state.counters["python_executions"] += 1
+        status = result.status
+        stdout = result.stdout
+        stderr = result.stderr
+        runtime_s = result.runtime_s
+        artifacts = result.artifacts
+
+    state.tool_log.append(ToolExecution(
+        tool="python_executor",
+        args={"input_files": list(input_files), "timeout_s": timeout_s},
+        code=code,
+        stdout=stdout,
+        stderr=stderr,
+        status=status,
+        runtime_s=runtime_s,
+        artifacts=artifacts,
+    ))
+    state.emit("PythonExecutor", f"Analysis finished with status: {status}")
     return gs
 
 
@@ -131,11 +174,16 @@ def _should_revise(gs: GraphState) -> str:
     return "revise"
 
 
+def _after_research(gs: GraphState) -> str:
+    return "python_tool" if gs.get("python_code") else "hypothesize"
+
+
 def build_graph():
     g = StateGraph(GraphState)
     g.add_node("plan", _plan_node)
     g.add_node("inspect", _inspect_node)
     g.add_node("research", _research_node)
+    g.add_node("python_tool", _python_tool_node)
     g.add_node("hypothesize", _hypothesize_node)
     g.add_node("experiment", _experiment_node)
     g.add_node("critique", _critique_node)
@@ -145,7 +193,11 @@ def build_graph():
     g.set_entry_point("plan")
     g.add_edge("plan", "inspect")
     g.add_edge("inspect", "research")
-    g.add_edge("research", "hypothesize")
+    g.add_conditional_edges(
+        "research", _after_research,
+        {"python_tool": "python_tool", "hypothesize": "hypothesize"},
+    )
+    g.add_edge("python_tool", "hypothesize")
     g.add_edge("hypothesize", "experiment")
     g.add_edge("experiment", "critique")
     g.add_conditional_edges("critique", _should_revise, {"report": "report", "revise": "revise"})
@@ -163,10 +215,15 @@ def run_investigation(
     dataset_paths: list[str],
     document_paths: list[str] | None = None,
     on_event=None,
+    python_code: str | None = None,
 ) -> InvestigationState:
     state = InvestigationState(question=question, datasets=dataset_paths, on_event=on_event)
     result = _GRAPH.invoke(
-        {"state": state, "document_paths": document_paths or []},
+        {
+            "state": state,
+            "document_paths": document_paths or [],
+            "python_code": python_code,
+        },
         config={"recursion_limit": 25},  # bounded-autonomy backstop for the revision loop
     )
     return result["state"]

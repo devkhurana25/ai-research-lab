@@ -1,11 +1,9 @@
 """
 Retrieval tool (spec section 9 — RAG for uploaded documents).
 
-Uses scikit-learn TF-IDF + cosine similarity rather than a neural embedding
-model + pgvector, because this sandbox has no route to download embedding
-model weights. The interface (index_documents / query) is the same shape
-a pgvector-backed version would expose, so swapping the implementation
-later doesn't require touching any calling code.
+Supports both scikit-learn TF-IDF retrieval and pgvector cosine-similarity
+retrieval. Select a backend with RETRIEVAL_BACKEND=tfidf|pgvector|auto;
+auto follows the configured database backend.
 
 Supports .txt/.md (read directly) and .pdf (text extracted via pypdf) --
 earlier versions of this file opened every path as raw text, which would
@@ -15,6 +13,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from typing import Literal
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -81,4 +80,72 @@ class DocumentIndex:
             RetrievedChunk(text=self.chunks[i], source=self.sources[i], score=float(sims[i]))
             for i in ranked if sims[i] > 0
         ]
+
+
+def retrieval_tfidf(
+    query: str, document_paths: list[str] | None = None, top_k: int = 3
+) -> list[RetrievedChunk]:
+    index = DocumentIndex()
+    index.index_documents(document_paths or [])
+    return index.query(query, top_k=top_k)
+
+
+def retrieval_pgvector(
+    query: str, document_paths: list[str] | None = None, top_k: int = 3
+) -> list[RetrievedChunk]:
+    from database.backend import BACKEND
+    from database import postgres_db
+    from tools.embeddings import embed
+
+    if BACKEND != "postgres":
+        raise RuntimeError("pgvector retrieval requires DATABASE_URL to select the Postgres backend")
+
+    chunks: list[str] = []
+    sources: list[str] = []
+    for path in document_paths or []:
+        if not os.path.exists(path):
+            continue
+        try:
+            text = _extract_text(path)
+        except Exception:
+            continue
+        document_chunks = _chunk(text)
+        chunks.extend(document_chunks)
+        sources.extend([os.path.basename(path)] * len(document_chunks))
+
+    if chunks:
+        postgres_db.index_chunks(chunks, sources, embed(chunks))
+    matches = postgres_db.query_similar(embed([query])[0], top_k=top_k)
+    return [
+        RetrievedChunk(
+            text=match["text"],
+            source=match["source"],
+            score=float(match.get("score", 0.0)),
+        )
+        for match in matches
+    ]
+
+
+def retrieval_backend() -> Literal["tfidf", "pgvector"]:
+    configured = os.getenv("RETRIEVAL_BACKEND", "auto").strip().lower()
+    if configured == "auto":
+        from database.backend import BACKEND
+
+        return "pgvector" if BACKEND == "postgres" else "tfidf"
+    if configured not in {"tfidf", "pgvector"}:
+        raise ValueError("RETRIEVAL_BACKEND must be 'auto', 'tfidf', or 'pgvector'.")
+    if configured == "pgvector":
+        from database.backend import BACKEND
+
+        if BACKEND != "postgres":
+            raise RuntimeError("RETRIEVAL_BACKEND=pgvector requires DATABASE_URL")
+    return configured  # type: ignore[return-value]
+
+
+def retrieve_documents(
+    query: str, document_paths: list[str] | None = None, top_k: int = 3
+) -> list[RetrievedChunk]:
+    if retrieval_backend() == "pgvector":
+        return retrieval_pgvector(query, document_paths, top_k=top_k)
+    return retrieval_tfidf(query, document_paths, top_k=top_k)
 

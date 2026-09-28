@@ -88,40 +88,40 @@ export async function downloadSalesReport(datasetPath: string, reportContext: st
   return res.blob();
 }
 
-export interface InvestigationSummary {
-  id: string;
-  question: string;
-  status: string;
-  created_at: string;
-}
+// export interface InvestigationSummary {
+//   id: string;
+//   question: string;
+//   status: string;
+//   created_at: string;
+// }
 
-export async function startInvestigation(
-  question: string,
-  datasetPaths: string[],
-  documentPaths: string[] = []
-): Promise<InvestigationResult> {
-  const res = await fetch(`${API_URL}/investigations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      question,
-      dataset_paths: datasetPaths,
-      document_paths: documentPaths,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Investigation failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
-}
+// export async function startInvestigation(
+//   question: string,
+//   datasetPaths: string[],
+//   documentPaths: string[] = []
+// ): Promise<InvestigationResult> {
+//   const res = await fetch(`${API_URL}/investigations`, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({
+//       question,
+//       dataset_paths: datasetPaths,
+//       document_paths: documentPaths,
+//     }),
+//   });
+//   if (!res.ok) {
+//     throw new Error(`Investigation failed: ${res.status} ${await res.text()}`);
+//   }
+//   return res.json();
+// }
 
-export async function listInvestigations(token?: string): Promise<InvestigationSummary[]> {
-  const res = await fetch(`${API_URL}/investigations`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("Failed to list investigations");
-  return res.json();
-}
+// export async function listInvestigations(token?: string): Promise<InvestigationSummary[]> {
+//   const res = await fetch(`${API_URL}/investigations`, {
+//     headers: token ? { Authorization: `Bearer ${token}` } : {},
+//   });
+//   if (!res.ok) throw new Error("Failed to list investigations");
+//   return res.json();
+// }
 
 export interface DatasetProfile {
   path: string;
