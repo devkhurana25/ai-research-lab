@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Research Lab</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#14171c; --border:#262b33; --text:#e6e9ef; --muted:#8b93a1; --accent:#6ea8fe; --good:#3ecf8e; --warn:#f5b342; --bad:#ef5b5b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, Inter, Segoe UI, sans-serif; }
+  header { padding: 24px 32px; border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 32px; display:flex; flex-direction:column; gap:20px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  input, textarea { width:100%; background:#0e1013; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:10px; font-size:14px; }
+  textarea { min-height:60px; font-family: monospace; }
+  button { background:var(--accent); border:none; color:#08101f; font-weight:600; padding:10px 18px; border-radius:6px; cursor:pointer; margin-top:12px; }
+  button:disabled { opacity:0.5; cursor:default; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:14px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
+  .badge.SUPPORTED, .badge.HIGH { background:rgba(62,207,142,.15); color:var(--good); }
+  .badge.PARTIALLY_SUPPORTED, .badge.MODERATE { background:rgba(245,179,66,.15); color:var(--warn); }
+  .badge.REJECTED, .badge.INSUFFICIENT_EVIDENCE, .badge.LOW { background:rgba(239,91,91,.15); color:var(--bad); }
+  .hyp { border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; }
+  .hyp h4 { margin:0 0 6px; font-size:15px; }
+  pre.log { background:#0e1013; padding:12px; border-radius:6px; font-size:12px; max-height:260px; overflow:auto; color:var(--muted); }
+  .critic-item { font-size:13px; margin-bottom:6px; }
+  .critic-item.blocking { color:var(--bad); }
+  .critic-item.warning { color:var(--warn); }
+  #reportBox { white-space: pre-wrap; font-size:13px; line-height:1.6; background:#0e1013; border-radius:6px; padding:16px; max-height:400px; overflow:auto; }
+  .muted { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔬 AI Research Lab</h1>
+  <p>Turn a question into an evidence-backed investigation.</p>
+</header>
+<main>
+  <div class="panel">
+    <div class="row">
+      <div>
+        <label>Research question</label>
+        <input id="question" value="Why did revenue decrease, and what should the company do?">
+      </div>
+      <div>
+        <label>Dataset path(s) — comma separated, relative to server</label>
+        <input id="datasets" value="sample_data/sales.csv">
+      </div>
+    </div>
+    <label>Document path(s) — optional, comma separated .txt files</label>
+    <input id="documents" value="">
+    <button id="runBtn" onclick="runInvestigation()">Start Investigation</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <div class="panel" id="planPanel" style="display:none">
+    <h3>Investigation Plan</h3>
+    <div id="plan"></div>
+  </div>
+
+  <div class="panel" id="hypPanel" style="display:none">
+    <h3>Hypothesis Board</h3>
+    <div id="hyps"></div>
+  </div>
+
+  <div class="panel" id="criticPanel" style="display:none">
+    <h3>Critic Review</h3>
+    <div id="critic"></div>
+  </div>
+
+  <div class="panel" id="reportPanel" style="display:none">
+    <h3>Report</h3>
+    <div id="reportBox"></div>
+  </div>
+
+  <div class="panel" id="logPanel" style="display:none">
+    <h3>Investigation Log</h3>
+    <pre class="log" id="logBox"></pre>
+  </div>
+</main>
+
+<script>
+async function runInvestigation() {
+  const btn = document.getElementById('runBtn');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  status.textContent = "Running investigation...";
+
+  const question = document.getElementById('question').value;
+  const datasets = document.getElementById('datasets').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const documents = document.getElementById('documents').value.split(',').map(s=>s.trim()).filter(Boolean);
+
+  try {
+    const res = await fetch('/investigations', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({question, dataset_paths: datasets, document_paths: documents})
+    });
+    const data = await res.json();
+    status.textContent = `Status: ${data.status}`;
+    render(data);
+  } catch (e) {
+    status.textContent = "Error: " + e;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function render(data) {
+  document.getElementById('planPanel').style.display = 'block';
+  document.getElementById('plan').innerHTML = data.plan.map((p,i)=>`<div>${i+1}. ${p}</div>`).join('');
+
+  document.getElementById('hypPanel').style.display = 'block';
+  document.getElementById('hyps').innerHTML = data.hypotheses.length
+    ? data.hypotheses.map(h => `
+        <div class="hyp">
+          <h4>${h.statement}</h4>
+          <span class="badge ${h.status}">${h.status}</span>
+          <span class="badge ${h.confidence}">${h.confidence} confidence</span>
+          <div class="muted" style="margin-top:6px">${h.rationale}</div>
+        </div>`).join('')
+    : '<div class="muted">No hypotheses could be generated — insufficient evidence in the data.</div>';
+
+  document.getElementById('criticPanel').style.display = 'block';
+  document.getElementById('critic').innerHTML = data.critic_findings.length
+    ? data.critic_findings.map(f => `<div class="critic-item ${f.severity}">[${f.severity.toUpperCase()}] ${f.issue}: ${f.detail}</div>`).join('')
+    : '<div class="muted">No issues raised.</div>';
+
+  document.getElementById('reportPanel').style.display = 'block';
+  document.getElementById('reportBox').textContent = data.report_markdown || '';
+
+  document.getElementById('logPanel').style.display = 'block';
+  document.getElementById('logBox').textContent = data.log.join('\n');
+}
+</script>
+</body>
+</html>

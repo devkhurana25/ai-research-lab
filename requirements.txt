@@ -1,0 +1,27 @@
+pandas
+numpy
+scipy
+scikit-learn
+fastapi
+uvicorn[standard]
+pydantic
+pytest
+langgraph
+sqlalchemy
+asyncpg
+psycopg2-binary
+pgvector
+# optional: enables real embeddings in tools/embeddings.py instead of the hash fallback.
+# Heavy (~500MB w/ torch) -- safe to omit; the system degrades gracefully without it.
+sentence-transformers
+bcrypt
+python-jose[cryptography]
+pydantic[email]
+fpdf2
+sse-starlette
+httpx
+ddgs
+pypdf
+requests
+python-dotenv
+matplotlib

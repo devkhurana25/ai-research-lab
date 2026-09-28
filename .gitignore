@@ -1,0 +1,9 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+database/lab.db
+reports_out.md
+.env
+.env.local
+venv/

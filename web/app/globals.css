@@ -1,0 +1,78 @@
+@import "tailwindcss";
+@import "@fontsource/source-serif-4/400.css";
+@import "@fontsource/source-serif-4/600.css";
+@import "@fontsource/source-serif-4/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+:root {
+  /* Base -- deep blue-charcoal, not pure black */
+  --lab-bg: #10141a;
+  --lab-panel: #171c24;
+  --lab-panel-raised: #1c222c;
+  --lab-border: #262d38;
+  --lab-border-strong: #333c4a;
+
+  /* Text */
+  --lab-text: #e4e7ec;
+  --lab-text-muted: #8992a3;
+  --lab-text-faint: #5a6270;
+
+  /* The one accent -- brass/amber, spent deliberately */
+  --lab-accent: #e8b854;
+  --lab-accent-dim: #8a6a30;
+
+  /* Semantic, muted rather than neon */
+  --lab-support: #8fb996;
+  --lab-support-dim: #3f5744;
+  --lab-warn: #d1a15a;
+  --lab-warn-dim: #5c4a2c;
+  --lab-danger: #d17b72;
+  --lab-danger-dim: #5c3833;
+
+  --font-display: "Source Serif 4", Georgia, serif;
+  --font-data: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@theme inline {
+  --color-lab-bg: var(--lab-bg);
+  --color-lab-panel: var(--lab-panel);
+  --color-lab-panel-raised: var(--lab-panel-raised);
+  --color-lab-border: var(--lab-border);
+  --color-lab-border-strong: var(--lab-border-strong);
+  --color-lab-text: var(--lab-text);
+  --color-lab-text-muted: var(--lab-text-muted);
+  --color-lab-text-faint: var(--lab-text-faint);
+  --color-lab-accent: var(--lab-accent);
+  --color-lab-accent-dim: var(--lab-accent-dim);
+  --color-lab-support: var(--lab-support);
+  --color-lab-support-dim: var(--lab-support-dim);
+  --color-lab-warn: var(--lab-warn);
+  --color-lab-warn-dim: var(--lab-warn-dim);
+  --color-lab-danger: var(--lab-danger);
+  --color-lab-danger-dim: var(--lab-danger-dim);
+  --font-display: var(--font-display);
+  --font-data: var(--font-data);
+}
+
+body {
+  background: var(--lab-bg);
+  color: var(--lab-text);
+}
+
+::selection {
+  background: var(--lab-accent-dim);
+  color: var(--lab-text);
+}
+
+/* Sharp specimen-label tags rather than rounded pill badges */
+.lab-tag {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  display: inline-block;
+}

@@ -1,0 +1,28 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec) -- lets Render
+# create the backend service directly from this repo via "New +" -> "Blueprint"
+# in the Render dashboard, with no manual service configuration.
+#
+# Free tier (verified against render.com pricing, Sept 2026): no credit card
+# required, 750 free instance-hours/month, but the service SLEEPS after 15
+# minutes idle and takes ~30-60s to wake on the next request. Fine for a
+# portfolio demo; upgrade to a paid instance ($7/mo) if you need it always-on.
+#
+# This does NOT provision Postgres via Render (Render's free Postgres expires
+# after 30-90 days). Use Neon's free tier instead (permanent, no card, includes
+# pgvector) and paste its connection string into DATABASE_URL below -- see
+# README.md's "Deploy for free" section for the exact steps.
+
+services:
+  - type: web
+    name: ai-research-lab-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true   # Render generates a random secret for you
+      - key: DATABASE_URL
+        sync: false           # set this manually to your Neon connection string
+      - key: API_KEY
+        sync: false           # optional -- leave unset to run without a shared key
