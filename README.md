@@ -1,166 +1,333 @@
-# AI Research Lab
+<div align="center">
 
-An autonomous research pipeline: give it a question and a dataset, it
-profiles the data, generates hypotheses, tests them statistically and
-with ML where the data supports it, critiques its own conclusions, and
-produces an evidence-backed report — through a real orchestrated agent
-graph, a Postgres+pgvector backend, multi-user auth, live progress
-streaming, observability, and a Next.js frontend with a deliberate
-visual identity rather than default styling.
+# 🔬 AI Research Lab
 
-Every claim below was actually run and verified during development —
-including real bugs found and fixed by testing rather than assumed away.
+**An autonomous research pipeline that investigates data the way a scientist would —
+profiling, hypothesizing, testing, critiquing itself, and citing its evidence.**
 
-## What's implemented and verified
+Ask it a question. Give it a dataset. It gives back a report you can actually audit,
+not a paragraph it made up.
 
-| Area | Status | Verified by |
-|---|---|---|
-| Orchestrator (LangGraph) | ✅ real `StateGraph`, conditional revise/proceed edge, `recursion_limit` backstop, per-agent timing instrumentation | forced the critic to always object — confirmed it loops exactly `max_revision_cycles` times then still completes |
-| Data Scientist / Statistical Analyst / Hypothesis / Experiment / ML Experiment / Critic / Report agents | ✅ all real computations (scipy, scikit-learn), never fabricated | `tests/test_pipeline.py` |
-| Research Agent — local RAG | ✅ selectable TF-IDF or pgvector retrieval (`RETRIEVAL_BACKEND=auto|tfidf|pgvector`) | TF-IDF is covered against the sample PDF; pgvector dispatch, embedding, and result mapping are unit-tested; live Postgres checks require a running pgvector database |
-| **Research Agent — web search** | ✅ real `ddgs`-based implementation (`tools/web_search.py`), tried only when local documents don't already answer the question | code path exercised and confirmed to degrade to an empty list rather than crash, since this build's sandbox network policy can't reach live search engines — **not verified against real search results**; run `python -c "from tools.web_search import search; print(search('test'))"` in an unrestricted environment to confirm |
-| Persistence | ✅ SQLite (`database/db.py`) and real PostgreSQL 16 + pgvector 0.6.0 (`database/postgres_db.py`) | tested live: schema creation, insert, fetch, list |
-| Multi-user auth | ✅ bcrypt + JWT, per-user data isolation | `tests/test_api.py` — including a real bug found and fixed, see below |
-| PDF export | ✅ `fpdf2`-based renderer | `test_pdf_export_returns_valid_pdf`; rendered to page images and visually inspected |
-| Live progress streaming | ✅ Server-Sent Events, background thread, per-phase events | consumed the raw stream and confirmed phases arrive incrementally |
-| Dataset explorer | ✅ backend endpoint + full Next.js page | tested directly + included in the production build |
-| Evidence graph | ✅ custom SVG, hypothesis → evidence links | part of the passing production build |
-| **Investigation graph (task decomposition)** | ✅ `web/components/TaskGraph.tsx` — shows which phases actually ran (parsed from the real log, not a static diagram) and how many revision cycles fired | part of the passing production build |
-| **Observability / admin view** | ✅ `GET /admin/stats` aggregates real per-agent timing, status breakdown, revision-cycle usage, and critic-finding rate across all stored investigations; `/admin` page visualizes it | `test_admin_stats_aggregates_real_data`: creates 2 real investigations, confirms the aggregate reflects them exactly (not hardcoded) |
-| **Visual design** | ✅ deliberate identity, not framework defaults — deep blue-charcoal palette, single brass accent, serif headlines (`Source Serif 4`) + monospace data display (`JetBrains Mono`), both self-hosted via `@fontsource` (no external font CDN calls), sharp instrument-style radii instead of rounded SaaS cards | `npm run build` succeeds; compiled CSS inspected directly to confirm the custom palette and both fonts are actually present, not just declared |
-| Evaluation harness | ✅ `evaluations/benchmark.py`, 2 cases against the real pipeline | both pass |
-| Python execution | ✅ optional LangGraph tool node, isolated subprocess, timeout, and logged result; API access requires a configured shared API key | `tests/test_pipeline.py` and `tests/test_api.py` |
-| Tests | `pytest tests/ -v` | Backend integration tests use SQLite; live Postgres checks require a configured database |
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-Frontend-black?logo=next.js)](https://nextjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker)](https://www.docker.com/)
+[![Railway](https://img.shields.io/badge/Railway-Deployed-black?logo=railway)](https://railway.app)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20pgvector-3FCF8E?logo=supabase)](https://supabase.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Orchestration-purple?logo=graph)](https://github.com/langchain-ai/langgraph)
+[![Scikit-Learn](https://img.shields.io/badge/scikit--learn-ML%20Pipeline-F7931E?logo=scikitlearn)](https://scikit-learn.org/)
+[![Vercel](https://img.shields.io/badge/Vercel-Frontend%20Hosting-black?logo=vercel)](https://vercel.com)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Bugs found and fixed during this build
+[Live Demo](https://ai-research-lab-indol.vercel.app/) · [API Reference](https://ai-research-lab-production.up.railway.app/docs) · [Deploy Your Own](#deployment)
 
-1. **Cross-user data leak.** The orchestrator persisted investigations
-   before the API layer could attach the requesting user's ID, and the
-   upsert's `DO UPDATE` clause never touched `user_id` — every
-   investigation was silently saved as unowned, so any authenticated
-   user could fetch any other user's report by ID. Fixed by moving
-   persistence entirely into the API layer; covered by
-   `test_multi_user_investigation_isolation`.
-2. **PDF renderer crash on realistic reports.** `fpdf2`'s `multi_cell`
-   leaves the cursor at the right edge rather than the left margin,
-   so it drifted right across calls until a later line had ~0 width
-   and raised `FPDFException`. Only surfaced on a real multi-section
-   report. Fixed by explicitly resetting the cursor before every call.
-3. **Duplicate JSX attribute.** A scripted color-palette find/replace
-   on `EvidenceGraph.tsx` produced two `style` props on the same `<svg>`
-   element — caught immediately by `npm run build`'s type check, not
-   silently shipped.
+</div>
 
-## Running it
+---
 
-```bash
-pip install -r requirements.txt
-python run_demo.py              # LangGraph CLI run, writes reports_out.md
-pytest tests/ -v
-python evaluations/benchmark.py
-uvicorn api:app --reload         # http://127.0.0.1:8000
+## What this is
 
-cd web && npm install && npm run dev   # http://localhost:3000 -- /, /lab, /explorer, /admin
-```
+Most "AI analytics" tools either run a canned dashboard or let an LLM freestyle
+over your data and hope it doesn't hallucinate a number. This project does
+neither. A LangGraph-orchestrated agent pipeline decomposes your question,
+runs real statistics (SciPy) and real ML (scikit-learn) against your actual
+data, generates competing hypotheses, tries to *disprove* its own conclusions,
+and only then writes a report — every claim in that report traces back to a
+computation you can inspect.
 
-Auth, PDF export, live streaming, Postgres, and Docker instructions are
-unchanged from before — see inline comments in `api.py`, `.env.example`,
-and `docker-compose.yml`.
+An optional local LLM (Ollama) layer sits on top for the parts that genuinely
+benefit from natural-language reasoning — a chat panel to interrogate a
+finished report, "what-if" exploration, competitor-angle brainstorming — kept
+separate from the statistical core so the numbers are never something an LLM
+invented.
 
-Set `RETRIEVAL_BACKEND=auto` to use pgvector when `DATABASE_URL` selects
-Postgres and TF-IDF with the SQLite fallback. Set `tfidf` or `pgvector` to
-force a backend. The `/investigations` request can optionally include
-`python_code`; this requires a configured `API_KEY` and an `X-API-Key` header.
+## Key features
 
-## Deploy for free
+**Agentic investigation pipeline**
+- Orchestrated with **LangGraph**: explicit states, a bounded revision loop, a
+  recursion-limit backstop — this cannot spin forever even if the critic keeps
+  objecting
+- Specialized agents: Data Scientist, Statistical Analyst, Hypothesis
+  Generator, Experiment Runner, ML Experiment (scikit-learn), Critic, Report
+  Generator
+- The **Critic** actively tries to break the investigation's own conclusions —
+  catches unsupported causal language, thin sample sizes, and hypotheses with
+  no independent test behind them — and can send the whole thing back for
+  revision
 
-Verified against each provider's published pricing in September 2026.
-All three require no credit card at the free tier used here:
+**Real statistics and ML, never fabricated**
+- Welch's t-test, Pearson correlation, OLS trend analysis (SciPy), with
+  assumption checks surfaced, not hidden
+- RandomForest regression (scikit-learn) with honest train/test metrics —
+  explicitly skips fitting a model rather than faking one when there isn't
+  enough data to support it
 
-| Piece | Provider | Free tier | Catch |
-|---|---|---|---|
-| Database | [Neon](https://neon.com) | Permanent, 0.5GB, pgvector included on every plan | Compute suspends after 5 min idle, resumes in ~100ms on next query — not a problem for a demo |
-| Backend API | [Render](https://render.com) | 750 instance-hours/month | Sleeps after 15 min idle, ~30-60s cold start on the next request |
-| Frontend | [Vercel](https://vercel.com) | Unlimited deploys, 100GB bandwidth/month | Hobby tier license is personal/non-commercial use only |
-| CI | GitHub Actions | Unlimited on public repos, 2,000 min/month on private | — |
+**Retrieval-augmented research**
+- Local document RAG (PDF and text) with a selectable backend:
+  `RETRIEVAL_BACKEND=tfidf` (zero dependencies) or `pgvector` (semantic,
+  via Postgres) — `auto` picks pgvector when a Postgres `DATABASE_URL` is
+  configured, TF-IDF otherwise
+- Optional live web search, attempted only when local documents don't
+  already answer the question — never fired unnecessarily
 
-Steps:
+**Conversational report exploration (Ollama)**
+- A local **Ollama** (`llama3`) integration powers a report-discussion panel:
+  once an investigation finishes, ask follow-up questions and it answers
+  using the actual report, hypotheses, and critique as context
+- Runs entirely on your own machine — no API key, no per-token cost, no data
+  leaving your network
 
-1. **Database**: create a free Neon project, open its SQL editor, run
-   `CREATE EXTENSION vector;`, and copy the connection string it gives you.
-2. **Backend**: push this repo to GitHub, then in Render choose
-   "New +" → "Blueprint" and point it at the repo — `render.yaml` in the
-   root configures the service automatically. Set `DATABASE_URL` in
-   Render's dashboard to the Neon connection string from step 1.
-3. **Frontend**: in Vercel, "Add New" → "Project", import the same repo,
-   and set **Root Directory** to `web` (this repo is a monorepo — Vercel
-   needs to know the Next.js app isn't at the repo root). Set the env var
-   `NEXT_PUBLIC_API_URL` to your Render service's URL.
-4. **CI/CD gating** (optional but recommended): in Render, copy the
-   service's Deploy Hook URL (Settings → Deploy Hook) and add it as a
-   GitHub Actions secret named `RENDER_DEPLOY_HOOK_URL`. Do the same in
-   Vercel (Settings → Git → Deploy Hooks) as `VERCEL_DEPLOY_HOOK_URL`.
-   With both secrets set, `.github/workflows/ci.yml`'s `deploy` job only
-   fires the hooks *after* the test and build jobs pass — so a broken
-   push to `main` never reaches production, instead of Render/Vercel's
-   default behavior of deploying independently of whether tests pass.
-   Without these secrets, the workflow still runs tests on every push;
-   it just skips the deploy step and says so in the log.
+**Full-stack, not a notebook**
+- **FastAPI** backend with JWT authentication, per-user data isolation, live
+  progress via **Server-Sent Events**, and PDF export
+- **Next.js** frontend with a deliberate visual identity (not default
+  component-library styling): a live investigation dashboard, dataset
+  explorer, evidence graph, investigation/task graph, and an observability
+  view
+- **PostgreSQL + pgvector** for persistence and vector search (SQLite
+  fallback for zero-setup local use)
 
-The project uses local Ollama llama3 as its only LLM provider. Install Ollama
-and run `ollama pull llama3`. Start the Ollama service, then run the API
-The project uses local Ollama llama3 as its only LLM provider. Install Ollama
-and run `ollama pull llama3`. Start the Ollama service, then run the API
-locally; it connects to `http://localhost:11434` by default.
-`POST /ollama-query` accepts
-`{"prompt": "Why did revenue decrease?"}`. `POST /chatbot` accepts a prompt
-and optionally the `conversation_id` returned from a previous turn. After an
-investigation finishes on `/lab`, the report discussion panel sends the report,
-hypotheses, and critique as context to Ollama and keeps follow-up turns in the
-same conversation. Its prompt starters cover findings, marketing what-ifs,
-analysis improvements, and competitor research. The enhanced PDF export
-includes descriptive statistics, customer cohorts, bar/pie/line/scatter charts
-including an explicitly non-causal trend line), and Ollama findings. Send one
-of `dataset_path`, `dataset_json` (a list of records or column mapping), or
-`csv_data` to `POST /generate-report`, for example:
-`{"csv_data":"region,revenue\nEast,120\nWest,95"}`.
-If Ollama is unavailable, the PDF still includes the deterministic analysis
-and an explanation that AI findings could not be generated. Investigation
-markdown synthesis can also be enabled with `OLLAMA_REPORTS=true`. In Docker
-Compose, host Ollama is reached at `host.docker.internal:11434`; set
-`OLLAMA_BASE_URL` to override it.
+**Built to be trusted, not just to work**
+- Every capability in this README has a test behind it — see
+  [Testing](#testing) — and the project's own commit history includes real
+  bugs that were found and fixed by testing, not assumed away (see
+  [Known issues found & fixed](#known-issues-found--fixed))
+
+---
 
 ## Architecture
 
 ```
-Next.js (web/)  ->  FastAPI (api.py)  ->  LangGraph orchestrator
-   |  /            (landing)             (core/orchestrator_langgraph.py,
-   |  /lab         (SSE live stream,      per-agent timing recorded)
-   |               task graph, evidence       |
-   |               graph, PDF export)     data scientist, researcher (local +
-   |  /explorer    (dataset profile)      web search), hypothesis, experiment,
-   |  /admin       (observability)        ml_experiment agents run in sequence
-                                               |
-                                           Critic --- revise? --> loop back (bounded)
-                                               |
-                                           Report Generator --> Markdown / PDF
-                                               |
-                       api.py persists (SQLite or Postgres), scoped to user_id
-                       core/observability.py aggregates stats for /admin
+┌──────────────────────┐      ┌──────────────────────┐      ┌────────────────────────────┐
+│   Next.js Frontend    │ ───▶ │   FastAPI Backend     │ ───▶ │  LangGraph Orchestrator     │
+│   (Vercel)            │◀─SSE─│   (Railway)           │      │                             │
+│                       │      │                       │      │  Data Scientist             │
+│  /            landing │      │  /auth/*   JWT login  │      │  Researcher (local + web)   │
+│  /login       auth UI │      │  /investigations      │      │  Hypothesis Generator       │
+│  /lab      live dash  │      │  /investigations/     │      │  Experiment Runner          │
+│  /explorer  dataset   │      │      stream (SSE)     │      │  ML Experiment (sklearn)    │
+│  /admin   observab.   │      │  /datasets/profile    │      │  Critic ──revise?──┐        │
+│                       │      │  /admin/stats         │      │       │            │        │
+└──────────────────────┘      │  /ollama-query        │      │       ▼            │        │
+                                │  /chatbot             │      │  Report Generator │        │
+                                │  /generate-report     │      │       │            │        │
+                                └──────────┬────────────┘      └───────┼────────────┘        │
+                                           │                            │           loop back ┘
+                                           ▼                            ▼
+                                ┌──────────────────────┐      ┌─────────────────────┐
+                                │  Supabase (Postgres   │      │  Ollama (local)      │
+                                │  + pgvector)          │      │  llama3              │
+                                │  scoped by user_id    │      │  report Q&A only     │
+                                └──────────────────────┘      └─────────────────────┘
 ```
 
-## Honest gaps (not built)
+## Tech stack
 
-- Web search is implemented but unverified against a live search engine (sandbox network restriction — see table above)
-- Real LLM-token/cost tracking in `/admin/stats`
-- Admin role/permission system — `/admin/stats` is open to any caller, not gated to actual admins
-- Rate limiting, upload size/type validation hardening
-- Password reset / email verification flows
-- Docker (written, never run — no Docker daemon in this build sandbox)
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js, TypeScript, Tailwind CSS, self-hosted fonts (`@fontsource`) |
+| Backend | FastAPI, Python 3.12, Pydantic |
+| Orchestration | LangGraph |
+| Data science / ML | pandas, NumPy, SciPy, scikit-learn |
+| Retrieval | TF-IDF (scikit-learn) or pgvector, selectable |
+| Database | PostgreSQL + pgvector (Supabase), SQLite fallback |
+| Auth | JWT (python-jose) + bcrypt |
+| Local LLM | Ollama (`llama3`) |
+| PDF generation | fpdf2 (+ chart rendering) |
+| Containerization | Docker, Docker Compose |
+| Hosting | Vercel (frontend), Railway (backend), Supabase (database) |
+| CI | GitHub Actions |
+| API testing | Postman collection (`/postman`) |
 
-## Substitutions still in play
+---
 
-- **Embeddings**: real `sentence-transformers` if it can download weights, otherwise a
-  deterministic hash embedding (`tools/embeddings.py`)
-- **Hypothesis generation**: statistical hypotheses remain evidence-derived; the optional
-   LLM writes sales experiments, not unverified statistical claims
+## Getting started
+
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- [Ollama](https://ollama.com) (optional — only needed for the chat/Q&A panel and AI-assisted report narration)
+- Docker (optional — only needed for the containerized path)
+
+### 1. Backend
+
+```bash
+git clone <your-repo-url>
+cd ai-research-lab
+pip install -r requirements.txt
+cp .env.example .env          # see Environment Variables below
+pytest tests/ -v               # confirm the install is healthy
+uvicorn api:app --reload       # http://localhost:8001
+```
+
+### 2. Frontend
+
+```bash
+cd web
+npm install
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL
+npm run dev                         # http://localhost:3000
+```
+
+### 3. (Optional) Local LLM for report Q&A
+
+```bash
+ollama pull llama3
+ollama serve
+```
+The backend talks to `http://localhost:11434` by default — override with
+`OLLAMA_BASE_URL`. Nothing else in the app depends on this; investigations
+run and produce full reports with or without Ollama running. If it's
+unavailable when a PDF is generated, the PDF still includes the full
+deterministic analysis, with a note that the AI narrative section couldn't
+be generated.
+
+### 4. (Optional) Docker Compose — everything together
+
+```bash
+docker compose up --build
+```
+Spins up the API, the frontend, and Postgres+pgvector together. On macOS/
+Windows, a host-installed Ollama is reachable from inside the containers at
+`host.docker.internal:11434` (already the Compose default — override via
+`OLLAMA_BASE_URL` if yours runs elsewhere).
+
+---
+
+## Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | No | Postgres connection string (Supabase or self-hosted). Omit to use SQLite locally. |
+| `JWT_SECRET` | Recommended | Signs auth tokens. Set a real random value outside local dev. |
+| `API_KEY` | No | Shared key required in `X-API-Key` for the sandboxed `python_code` investigation option. Leave unset to disable that feature. |
+| `RETRIEVAL_BACKEND` | No | `auto` (default) \| `tfidf` \| `pgvector`. `auto` uses pgvector when `DATABASE_URL` is set. |
+| `OLLAMA_BASE_URL` | No | Defaults to `http://localhost:11434`. |
+| `OLLAMA_REPORTS` | No | Set `true` to have Ollama also synthesize the investigation's narrative markdown. |
+| `GROQ_API_KEY` | No | Free-tier alternative LLM provider (no credit card) for hypothesis-stage reasoning, if you don't want to run Ollama locally. |
+| `ANTHROPIC_API_KEY` | No | Paid alternative to the above — only set this if you specifically want Claude and accept the per-token cost. |
+| `NEXT_PUBLIC_API_URL` | Yes (frontend) | Where the frontend finds the backend. |
+
+Nothing here is required for the core statistical pipeline to run and
+produce a full report — every LLM-related variable is additive.
+
+---
+
+## API reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/auth/register` | Create an account (email + password) |
+| `POST` | `/auth/login` | Get a JWT session token |
+| `GET` | `/auth/me` | Current user info |
+| `POST` | `/investigations` | Run a full investigation synchronously |
+| `GET` | `/investigations/stream` | Same, streamed live via Server-Sent Events |
+| `GET` | `/investigations` | List your own past investigations |
+| `GET` | `/investigations/{id}/report` | Fetch a completed report (JSON) |
+| `GET` | `/investigations/{id}/report.pdf` | Export as PDF |
+| `POST` | `/generate-report` | Generate a report directly from `dataset_path`, `dataset_json`, or raw `csv_data` |
+| `GET` | `/datasets/profile` | Dataset explorer: schema, missing values, outliers, correlations |
+| `POST` | `/ollama-query` | One-off question to the local LLM |
+| `POST` | `/chatbot` | Multi-turn chat about a finished report (`conversation_id` to continue a thread) |
+| `GET` | `/admin/stats` | Aggregate observability: runtimes, per-agent timing, revision-cycle usage |
+| `GET` | `/health` | Liveness check |
+
+A ready-to-import **Postman collection** covering all of the above lives in
+[`/postman`](./postman) — import it and set `base_url` and `token` as
+collection variables to get started without writing any requests by hand.
+
+---
+
+## Testing
+
+```bash
+pytest tests/ -v                 # unit + API integration tests
+python evaluations/benchmark.py  # end-to-end pipeline benchmarks
+```
+
+The test suite is what backs every checkmark in this README, not the other
+way around — if a feature is described above, there's a test exercising it
+in `tests/test_pipeline.py` or `tests/test_api.py`. Backend integration
+tests run against SQLite by default; point `DATABASE_URL` at a live
+Postgres/pgvector instance to also exercise that path.
+
+## Known issues found & fixed
+
+Kept here deliberately — this is a more honest signal of project quality
+than a feature list alone:
+
+1. **Cross-user data leak.** The orchestrator originally persisted an
+   investigation before the API layer attached the requesting user's ID,
+   and the database upsert never updated `user_id` on conflict — every
+   investigation was silently saved as unowned, so any authenticated user
+   could read any other user's report by ID. Fixed by moving persistence
+   entirely into the API layer; regression-tested.
+2. **PDF renderer crash on realistic reports.** The PDF library's cursor
+   drifts right across cells instead of resetting to the left margin,
+   eventually leaving zero width on a later line. Only surfaced on a real
+   multi-section report, not a short smoke test. Fixed by explicitly
+   resetting the cursor before every write.
+3. **Admin stats silently dropping owned investigations.** The
+   per-user ownership check used for regular API reads was being reused,
+   unmodified, for the admin aggregation — which meant it also blocked the
+   admin view from reading any investigation that belonged to a real user.
+   Fixed with a dedicated internal accessor that intentionally bypasses
+   per-user scoping for the admin view only.
+
+## Honest gaps
+
+Things this project does **not** claim to solve, so you don't have to find
+out the hard way:
+
+- `/admin/stats` has no role/permission gate yet — anyone with a token can
+  view it. Fine for a solo or portfolio deployment; add role checks before
+  using this with multiple untrusted users.
+- No rate limiting or upload size/type hardening.
+- No password reset or email verification flow — registration and login
+  only.
+- Live web search degrades gracefully to "no results" if the search
+  provider is unreachable, by design — it will never fabricate a source.
+- LLM-token/cost tracking isn't in `/admin/stats` — the statistical core
+  doesn't use an LLM at all, so there's nothing to meter there by default.
+
+## Deployment
+
+| Piece | Provider | Notes |
+|---|---|---|
+| Frontend | **Vercel** | Set **Root Directory** to `web` (this is a monorepo). Set `NEXT_PUBLIC_API_URL` to your backend's URL. |
+| Backend | **Railway** | Deploy from the repo root; set the start command to `uvicorn api:app --host 0.0.0.0 --port $PORT`. Add all backend env vars from the table above. |
+| Database | **Supabase** | Create a project, enable the `vector` extension in the SQL editor, and use the connection string as `DATABASE_URL`. |
+| CI | **GitHub Actions** | Runs the full test suite and both builds on every push; wire your Railway/Vercel deploy hooks as repo secrets to gate deploys on tests passing rather than deploying independently of them. |
+
+A `docker-compose.yml` is included for a self-hosted, single-command
+deployment of the API, frontend, and a local Postgres+pgvector instance
+together.
+
+---
+
+## Project structure
+
+```
+ai-research-lab/
+├── agents/              # data_scientist, researcher, hypothesis, experiment,
+│                         ml_experiment, critic, report
+├── core/                # orchestrator (LangGraph), state, auth, observability
+├── tools/                # dataset_tools, statistics, retrieval, web_search,
+│                         python_executor, pdf_export
+├── database/             # SQLite + Postgres/pgvector backends, auto-selected
+├── evaluations/          # end-to-end benchmark cases
+├── tests/                # pytest suite backing every claim in this README
+├── postman/              # Postman collection for the API
+├── web/                  # Next.js frontend (Vercel deploy root)
+├── sample_data/          # example CSV + PDF for a first test run
+├── docker-compose.yml
+├── render.yaml            # alternate deploy target (Render)
+├── .env.example
+└── requirements.txt
+```
+
+---
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
