@@ -17,7 +17,7 @@ not a paragraph it made up.
 [![LangGraph](https://img.shields.io/badge/LangGraph-Orchestration-purple?logo=graph)](https://github.com/langchain-ai/langgraph)
 [![Scikit-Learn](https://img.shields.io/badge/scikit--learn-ML%20Pipeline-F7931E?logo=scikitlearn)](https://scikit-learn.org/)
 [![Vercel](https://img.shields.io/badge/Vercel-Frontend%20Hosting-black?logo=vercel)](https://vercel.com)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [Live Demo](https://ai-research-lab-indol.vercel.app/) · [API Reference](https://ai-research-lab-production.up.railway.app/docs) · [Deploy Your Own](#deployment)
 
@@ -330,4 +330,4 @@ ai-research-lab/
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+Apache 2.0 — see [LICENSE](./LICENSE).
