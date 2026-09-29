@@ -6,7 +6,6 @@ fastapi
 uvicorn[standard]
 pydantic
 pytest
-psycopg[binary]
 langgraph
 sqlalchemy
 psycopg2-binary
